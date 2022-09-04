@@ -62,6 +62,8 @@ class SalesPlanSuccess:
             raise ValueError("The pandas.DataFrame in parameter 'data' of Class SalesPlanSuccess must not contain any empty values")
         self.tt['qEnd'] = 0
         self.tt.loc[np.int64(self.tt.Month.values) % 3 == 0, 'qEnd'] = 1
+        self.finalMonth = self.tt.Month.iloc[-1]
+        self.ytd_sales = self.tt.Sales.iloc[-self.finalMonth:].values.sum()
         self.tt['Sales'] = np.log(self.tt.Sales)
         self.finalSales = self.tt.Sales.iloc[-1]
         self.tt['Sales'] = self.tt.Sales.diff()
@@ -70,11 +72,13 @@ class SalesPlanSuccess:
         self.model = sm.tsa.ARIMA(endog=self.tt.Sales.values, exog=self.tt.qEnd.values, order=(2, 0, 0))
         self.finalTwo = self.tt.Sales.iloc[-2:].values.reshape((2,1))
         
+        
     def fit(self) -> None:
         self.model_fit = self.model.fit()
         self.qEnd = (((np.arange(int(self.tt.Month.iloc[-1])+1, 13) % 3) == 0) * self.model_fit.params[1]).reshape((5,1))
         self.ARs = self.model_fit.params[3:1:-1].reshape((1,2))
-        self.monthsToForecast = 12-int(self.tt.Month.iloc[-1])
+        self.finalMonth = int(self.tt.Month.iloc[-1])
+        self.monthsToForecast = 12 - self.finalMonth
         self.m1 = np.dot(self.ARs, self.finalTwo)
         
     def simulate(self) -> None:
@@ -88,11 +92,11 @@ class SalesPlanSuccess:
         if self.monthsToForecast > 2:
             for i in range(2, self.monthsToForecast):
                 self.simul[i] = np.dot(self.ARs, self.simul[(i-2):i])
-        self.finalDistibution = np.exp(self.simul.sum(axis=0) + self.finalSales)
+        self.finalDistibution = (np.exp(self.simul + self.finalSales)).sum(axis=0) + self.ytd_sales
         self.dfPlot = pd.DataFrame({'Sales': self.finalDistibution, 'Plan': 'Achieved'})
         self.dfPlot.loc[self.dfPlot.Sales < self.plan, 'Plan'] = 'Not achieved'
         
-        self.left_x = np.quantile(self.finalDistibution, 0.001)
+        self.left_x = min(self.finalDistibution)
         self.right_x = np.quantile(self.finalDistibution, 0.99)
         self.position = (self.plan - self.left_x) / (self.right_x - self.left_x)
         self.percent_not_achieved = 100*(self.finalDistibution < self.plan).mean()
