@@ -3,7 +3,7 @@ from distutils.core import setup
 setup(
     name = 'salesplansuccess',
     packages = ['salesplansuccess'],
-    version = '0.0.2',
+    version = '0.0.3',
     license = 'MIT',
     description = 'This package helps estimate the probability of achieving the annual sales plan for a specific product based on historical monthly sales data with the help of ARIMA modeling and Monte Carlo simulation',
     url = 'https://github.com/yuryatin/salesplansuccess',
