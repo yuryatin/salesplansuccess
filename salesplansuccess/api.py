@@ -32,7 +32,7 @@ import statsmodels.api as sm
 
 
 class SalesPlanSuccess:
-    def __init__(self, data:pd.DataFrame, plan:int):
+    def __init__(self, data:pd.DataFrame, plan:int, product:str = ''):
         if not isinstance(data, pd.DataFrame):
             raise TypeError("The parameter 'data' of class SalesPlanSuccess can accept only pandas.DataFrame")
         if not isinstance(plan, int) and not isinstance(plan, float):
@@ -63,6 +63,9 @@ class SalesPlanSuccess:
             raise Error("The pandas.DataFrame in parameter 'data' of Class SalesPlanSuccess must contain at least 7 months of observations for modeling")
         if self.tt[['Year','Month']].duplicated().any():
             raise ValueError("The pandas.DataFrame in parameter 'data' of Class SalesPlanSuccess must not contain duplicate Year/Month pairs")
+        if not isinstance(product, str):
+            raise TypeError("The parameter 'product' of class SalesPlanSuccess can accept only strings")
+        self.product = 'of ' + product.capitalize() if product != '' else ''
         self.tt2 = self.tt.copy()
         self.tt2['SOY'] = False
         self.tt2.loc[self.tt2.Month == 1, 'SOY'] = True
@@ -78,6 +81,7 @@ class SalesPlanSuccess:
         self.tt.loc[np.int64(self.tt.Month.values) % 3 == 0, 'qEnd'] = 1
         self.finalMonth = self.tt.Month.iloc[-1]
         self.monthsToForecast = 12 - self.finalMonth if self.finalMonth < 12 else 12
+        self.yearForcasted = self.tt.Year.iloc[-1] if self.finalMonth < 12 else self.tt.Year.iloc[-1] + 1
         self.ytd_sales = self.tt.Sales.iloc[-self.finalMonth:].values.sum() if self.finalMonth < 12 else 0.0
         self.tt['Sales'] = np.log(self.tt.Sales)
         self.finalSales = self.tt.Sales.iloc[-1]
@@ -86,15 +90,44 @@ class SalesPlanSuccess:
         self.tt.reset_index(drop=True, inplace=True)
         self.model = sm.tsa.ARIMA(endog=self.tt.Sales.values, exog=self.tt.qEnd.values, order=(2, 0, 0))
         self.finalTwo = self.tt.Sales.iloc[-2:].values.reshape((2,1))
-        
-        
-    def fit(self) -> None:
-        self.model_fit = self.model.fit()
         self.startMonth = self.finalMonth + 1 if self.finalMonth < 12 else 1
-        self.qEnd = (((np.arange(self.startMonth, 13) % 3) == 0) * self.model_fit.params[1]).reshape((self.monthsToForecast,1))
-        self.ARs = self.model_fit.params[3:1:-1].reshape((1,2))
+
+        
+    def fit(self, mode:str = "LSE") -> None:
+        if not isinstance(mode, str):
+            raise TypeError("The parameter 'mode' of method fit() of class SalesPlanSuccess can accept only strings")
+        if (mode != 'LSE') and (mode != 'ARIMA'):
+            raise ValueError("The parameter 'mode' of method fit() of class SalesPlanSuccess is expected to get either value 'LSE' (default) or 'ARIMA'")
+        self.mode = mode
+        if self.mode == 'LSE':
+            self._fit_lse()
+        else:
+            self._fit_arima()
+        self.qEnd = (((np.arange(self.startMonth, 13) % 3) == 0) * self.params[1]).reshape((self.monthsToForecast,1))
+        self.ARs = self.params[3:1:-1].reshape((1,2))
         self.m1 = np.dot(self.ARs, self.finalTwo)
 
+            
+    def _fit_arima(self) -> None:
+        self.model_fit = self.model.fit()
+        self.params = self.model_fit.params
+       
+        
+    def _fit_lse(self) -> None:
+        self.y = self.tt.Sales.iloc[2:].values.reshape((self.tt.shape[0]-2, 1))
+        self.x = self.tt[['Sales', 'qEnd']].copy()
+        self.x['AR1'] = self.x.Sales.shift(1)
+        self.x['AR2'] = self.x.Sales.shift(2)
+        self.x = np.hstack([np.ones(self.tt.shape[0]-2).reshape((self.tt.shape[0]-2,1)), self.x[['qEnd', 'AR1', 'AR2']].iloc[2:].values])
+        self.model_fit2 = np.linalg.lstsq(self.x, self.y, rcond=None)
+        self.params = np.concatenate((self.model_fit2[0], (self.y - np.dot(self.x, self.model_fit2[0])).var().reshape((1,1))))
+
+
+    def summary(self) -> None:
+        if not hasattr(self, 'params'):
+            raise ValueError("Before calling method summary() of an object of class SalesPlanSuccess you first have to fit the ARIMA model by calling method 'fit' of the same object")
+        print('\t  Coefficient estimates in %s\nMonthly drift:\t\t\t\t%6.3f\nEnd of quarter:\t\t\t\t%6.3f\nAR1:\t\t\t\t\t%6.3f\nAR2:\t\t\t\t\t%6.3f\nStandard deviation of residuals:\t%6.3f' % (self.mode, self.params[0], self.params[1], self.params[2], self.params[3], np.sqrt(self.params[4])))
+        
         
     def simulate(self, sample_size:int = 50000) -> None:
         if not isinstance(sample_size, int):
@@ -102,9 +135,9 @@ class SalesPlanSuccess:
         self.sample_size = sample_size
         if (self.sample_size < 1000) or (self.sample_size > 10000000):
             raise ValueError("The parameter 'sample_size' of method simulate() in class SalesPlanSuccess must be between 1000 and 10 000 000")
-        if not hasattr(self, 'model_fit'):
+        if not hasattr(self, 'params'):
             raise ValueError("Before calling method 'simulate' of an object of class SalesPlanSuccess you first have to fit the ARIMA model by calling method 'fit' of the same object")
-        self.simul = np.random.normal(loc=self.model_fit.params[0], scale=np.sqrt(self.model_fit.params[4]), size=[self.monthsToForecast, self.sample_size])
+        self.simul = np.random.normal(loc=self.params[0], scale=np.sqrt(self.params[4]), size=[self.monthsToForecast, self.sample_size])
         self.simul = self.qEnd + self.simul
         self.simul[0] = self.simul[0] + self.m1
         if self.monthsToForecast > 1:
@@ -112,23 +145,20 @@ class SalesPlanSuccess:
         if self.monthsToForecast > 2:
             for i in range(2, self.monthsToForecast):
                 self.simul[i] = np.dot(self.ARs, self.simul[(i-2):i])
-        self.finalDistibution = (np.exp(self.simul.cumsum(axis=0) + self.finalSales)).sum(axis=0) + self.ytd_sales
-        self.dfPlot = pd.DataFrame({'Sales': self.finalDistibution, 'Plan': 'Achieved'})
-        self.dfPlot.loc[self.dfPlot.Sales < self.plan, 'Plan'] = 'Not achieved'
-        
+        self.finalDistibution = (np.exp(self.simul.cumsum(axis=0) + self.finalSales)).sum(axis=0) + self.ytd_sales       
         self.left_x = min(self.finalDistibution)
         self.left_margin = self.left_x if self.left_x < self.plan else self.plan
         self.right_x = np.quantile(self.finalDistibution, 0.99)
         self.right_margin = self.right_x if self.right_x > self.plan else self.plan
         self.position = (self.plan - self.left_margin) / (self.right_margin - self.left_margin)
         self.percent_not_achieved = 100*(self.finalDistibution < self.plan).mean()
-        self.density = stats.kde.gaussian_kde(self.dfPlot.Sales)
+        self.density = stats.kde.gaussian_kde(self.finalDistibution)
         self.x1 = np.linspace(self.left_x, self.plan, 1000)
         self.x2 = np.linspace(self.plan, self.right_x, 1000)
         
         
     def plot(self, failure_color:str = 'orange', success_color:str = 'green') -> None:
-        if not hasattr(self, 'model_fit'):
+        if not hasattr(self, 'params'):
             raise ValueError("Before calling method 'plot' of an object of class SalesPlanSuccess you first have to fit the ARIMA model by calling method 'fit' and then conduct a simulation by calling method 'simulate' of the same object")
         if not hasattr(self, 'simul'):
             raise ValueError("Before calling method 'plot' of an object of class SalesPlanSuccess you first have to conduct a simulation by calling method 'simulate' of the same object")
@@ -145,6 +175,8 @@ class SalesPlanSuccess:
         plt.fill_between(self.x2, self.density(self.x2), color = success_color)
         plt.text(self.position-0.01, 0.2, "Not achieved\n%.1f" % (self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes, horizontalalignment='right')
         plt.text(self.position+0.01, 0.7, "Achieved\n%.1f" % (100 - self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes)
+        plt.xlabel("Expected annual sales vs. the plan")
+        plt.title("Expected annual sales %s in %4d" % (self.product, self.yearForcasted))
         plt.xlim(self.left_margin, self.right_margin)
         plt.ylim(0)
         plt.box(False)
