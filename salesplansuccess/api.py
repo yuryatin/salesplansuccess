@@ -26,9 +26,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import is_color_like
-import statsmodels.api as sm
 from scipy import stats
 from datetime import date
+import statsmodels.api as sm
+
 
 class SalesPlanSuccess:
     def __init__(self, data:pd.DataFrame, plan:int):
@@ -76,7 +77,8 @@ class SalesPlanSuccess:
         self.tt['qEnd'] = 0
         self.tt.loc[np.int64(self.tt.Month.values) % 3 == 0, 'qEnd'] = 1
         self.finalMonth = self.tt.Month.iloc[-1]
-        self.ytd_sales = self.tt.Sales.iloc[-self.finalMonth:].values.sum()
+        self.monthsToForecast = 12 - self.finalMonth if self.finalMonth < 12 else 12
+        self.ytd_sales = self.tt.Sales.iloc[-self.finalMonth:].values.sum() if self.finalMonth < 12 else 0.0
         self.tt['Sales'] = np.log(self.tt.Sales)
         self.finalSales = self.tt.Sales.iloc[-1]
         self.tt['Sales'] = self.tt.Sales.diff()
@@ -88,11 +90,11 @@ class SalesPlanSuccess:
         
     def fit(self) -> None:
         self.model_fit = self.model.fit()
-        self.qEnd = (((np.arange(int(self.tt.Month.iloc[-1])+1, 13) % 3) == 0) * self.model_fit.params[1]).reshape((5,1))
+        self.startMonth = self.finalMonth + 1 if self.finalMonth < 12 else 1
+        self.qEnd = (((np.arange(self.startMonth, 13) % 3) == 0) * self.model_fit.params[1]).reshape((self.monthsToForecast,1))
         self.ARs = self.model_fit.params[3:1:-1].reshape((1,2))
-        self.finalMonth = int(self.tt.Month.iloc[-1])
-        self.monthsToForecast = 12 - self.finalMonth
         self.m1 = np.dot(self.ARs, self.finalTwo)
+
         
     def simulate(self, sample_size:int = 50000) -> None:
         if not isinstance(sample_size, int):
@@ -110,7 +112,7 @@ class SalesPlanSuccess:
         if self.monthsToForecast > 2:
             for i in range(2, self.monthsToForecast):
                 self.simul[i] = np.dot(self.ARs, self.simul[(i-2):i])
-        self.finalDistibution = (np.exp(self.simul + self.finalSales)).sum(axis=0) + self.ytd_sales
+        self.finalDistibution = (np.exp(self.simul.cumsum(axis=0) + self.finalSales)).sum(axis=0) + self.ytd_sales
         self.dfPlot = pd.DataFrame({'Sales': self.finalDistibution, 'Plan': 'Achieved'})
         self.dfPlot.loc[self.dfPlot.Sales < self.plan, 'Plan'] = 'Not achieved'
         
@@ -123,6 +125,7 @@ class SalesPlanSuccess:
         self.density = stats.kde.gaussian_kde(self.dfPlot.Sales)
         self.x1 = np.linspace(self.left_x, self.plan, 1000)
         self.x2 = np.linspace(self.plan, self.right_x, 1000)
+        
         
     def plot(self, failure_color:str = 'orange', success_color:str = 'green') -> None:
         if not hasattr(self, 'model_fit'):
