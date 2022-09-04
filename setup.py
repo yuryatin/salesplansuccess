@@ -11,4 +11,5 @@ setup(
     download_url = 'https://github.com/yuryatin/salesplansuccess/archive/refs/tags/v0.0.1.tar.gz',
     keywords = ['sales', 'forecast', 'arima', 'simulation', 'pharma', 'medications', 'pharmacy', 'pharmaceutical', 'ics', 'offtake'],
     classifiers = [],
+    requires = ['numpy','pandas','matplotlib','statsmodels', 'scipy', 'datetime']
 )
