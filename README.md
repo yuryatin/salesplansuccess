@@ -10,3 +10,6 @@ The only class SalesPlanSuccess of this package accepts for its data parameter o
 # Assumptions
 The model behind the forecast assumes that the monthly sales changes' residuals are lognormally distributed and the logarithmic monthly sales time series is subject to an ARIMA(2,1,0) process with one external regressor, which is the end of a quarter (March, June, September or December). This lognormal assumption cannot accomodate the historical sales data with 'no sales' months. So, please, do not use this package for historical sales time series with zeros.
 This model also apparantly assumes that the sales dynamics was subject to the same non-changing process in the past and will continue to follow it in the future (no new promo interventions are assumed).
+
+# How to use it
+Very easy. The package has only one class _SalesPlanSuccess_, which is initiated with the historical sales pandas DataFrame, the current annual plan number, and optionally with the product name (for the plot). This class has only 4 'public' methods: .fit(), .summary(), .simulate(), .plot(), which are expected to be called in this order.<br/> The illustration of using this package can be found in the attached file _salesplansuccess_illustration.ipybn_ .
