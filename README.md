@@ -14,6 +14,7 @@ The model behind the forecast assumes that the monthly sales changes' residuals 
 Very easy. The package has only one class `SalesPlanSuccess()`, which is initiated with the historical sales pandas DataFrame, the current annual plan number, and optionally with the product name (for the plot). This class has only 4 'public' methods: `.fit()`, `.summary()`, `.simulate()`, `.plot()`, which are expected to be called in this order.<br/> The illustration of how to use this package can be found in the attached file [salesplansuccess_illustration.ipybn](https://github.com/yuryatin/salesplansuccess/blob/main/salesplansuccess_illustration.ipynb) .<br/> Briefly this can expressed as this:
 ```python
 import pandas as pd
+from salesplansuccess.api import SalesPlanSuccess
 myHistoricalData = pd.read_excel('myfile.xlsx')
 myAnnualPlan = 1000
 sps = SalesPlanSuccess(data=myHistoricalData, plan=myAnnualPlan)
