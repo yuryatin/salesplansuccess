@@ -22,15 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import is_color_like
-from scipy import stats
-from datetime import date
-import statsmodels.api as sm
-
-
 class SalesPlanSuccess:
     def __init__(self, data:pd.DataFrame, plan:int, product:str = ''):
         if not isinstance(data, pd.DataFrame):
@@ -174,7 +165,7 @@ class SalesPlanSuccess:
             self.simul[1] = self.simul[1] + ((self.simul[0] * self.params['AR1']) + (self.finalTwo[1] * self.params['AR2']))
         if self.monthsToForecast > 2:
             for i in range(2, self.monthsToForecast):
-                self.simul[i] = np.dot(self.ARs, self.simul[(i-2):i])
+                self.simul[i] = self.simul[i] + np.dot(self.ARs, self.simul[(i-2):i])
         self.finalDistibution = (np.exp(self.simul.cumsum(axis=0) + self.finalSales)).sum(axis=0) + self.ytd_sales       
         self.left_x = min(self.finalDistibution)
         self.left_margin = self.left_x if self.left_x < self.plan else self.plan
@@ -200,6 +191,7 @@ class SalesPlanSuccess:
         else:
             self.vertical_position1 = 0.7
             self.vertical_position2 = 0.2
+        self.summary()
         
         
     def plot(self, failure_color:str = 'orange', success_color:str = 'green') -> None:
