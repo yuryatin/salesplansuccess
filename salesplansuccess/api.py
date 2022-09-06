@@ -22,6 +22,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.colors import is_color_like
+from scipy import stats
+from datetime import date
+import statsmodels.api as sm
+
+
 class SalesPlanSuccess:
     def __init__(self, data:pd.DataFrame, plan:int, product:str = ''):
         if not isinstance(data, pd.DataFrame):
