@@ -103,13 +103,12 @@ class SalesPlanSuccess:
             self._fit_lse()
         else:
             self._fit_arima()
-        self.qEnd = (((np.arange(self.startMonth, 13) % 3) == 0) * self.params[1]).reshape((self.monthsToForecast,1))
-        self.ARs = self.params[3:1:-1].reshape((1,2))
-        self.m1 = np.dot(self.ARs, self.finalTwo)
+        self.params = pd.Series(data=np.concatenate((self.params, np.sqrt(self.params[-1]).reshape((1,)))), index=['mu', 'EoQ', 'AR1', 'AR2', 'var', 'sigma'])
 
             
     def _fit_arima(self) -> None:
         self.model_fit = self.model.fit()
+        self.params = None
         self.params = self.model_fit.params
        
         
@@ -120,28 +119,59 @@ class SalesPlanSuccess:
         self.x['AR2'] = self.x.Sales.shift(2)
         self.x = np.hstack([np.ones(self.tt.shape[0]-2).reshape((self.tt.shape[0]-2,1)), self.x[['qEnd', 'AR1', 'AR2']].iloc[2:].values])
         self.model_fit2 = np.linalg.lstsq(self.x, self.y, rcond=None)
-        self.params = np.concatenate((self.model_fit2[0], (self.y - np.dot(self.x, self.model_fit2[0])).var().reshape((1,1))))
+        self.params = None
+        self.params = np.concatenate((self.model_fit2[0], (self.y - np.dot(self.x, self.model_fit2[0])).var().reshape((1,1)))).reshape((5,))
 
 
     def summary(self) -> None:
         if not hasattr(self, 'params'):
             raise ValueError("Before calling method summary() of an object of class SalesPlanSuccess you first have to fit the ARIMA model by calling method 'fit' of the same object")
-        print('\t  Coefficient estimates in %s\nMonthly drift:\t\t\t\t%6.3f\nEnd of quarter:\t\t\t\t%6.3f\nAR1:\t\t\t\t\t%6.3f\nAR2:\t\t\t\t\t%6.3f\nStandard deviation of residuals:\t%6.3f' % (self.mode, self.params[0], self.params[1], self.params[2], self.params[3], np.sqrt(self.params[4])))
+        print('\t  Coefficient estimates in %s\nMonthly drift:\t\t\t\t%6.3f\nEnd of quarter:\t\t\t\t%6.3f\nAR1:\t\t\t\t\t%6.3f\nAR2:\t\t\t\t\t%6.3f\nStandard deviation of residuals:\t%6.3f' % (self.mode, self.params['mu'], self.params['EoQ'], self.params['AR1'], self.params['AR2'], self.params['sigma']))
         
         
-    def simulate(self, sample_size:int = 50000) -> None:
+    def simulate(self, sample_size:int = 50000, mu:float = None, sigma:float = None, EoQ:float = None, AR1:float = None, AR2:float = None) -> None:
         if not isinstance(sample_size, int):
             raise TypeError("The parameter 'sample_size' of class SalesPlanSuccess can accept only regular Python integers")
-        self.sample_size = sample_size
-        if (self.sample_size < 1000) or (self.sample_size > 10000000):
+        if not isinstance(mu, float) and not isinstance(mu, int) and mu is not None:
+            raise TypeError("The parameter 'mu' of class SalesPlanSuccess can accept only regular Python floats and integers")
+        if not isinstance(sigma, float) and not isinstance(sigma, int) and sigma is not None:
+            raise TypeError("The parameter 'sigma' of class SalesPlanSuccess can accept only regular Python floats and integers")
+        if not isinstance(EoQ, float) and not isinstance(EoQ, int) and EoQ is not None:
+            raise TypeError("The parameter 'EoQ' of class SalesPlanSuccess can accept only regular Python floats and integers")
+        if not isinstance(AR1, float) and not isinstance(AR1, int) and AR1 is not None:
+            raise TypeError("The parameter 'AR1' of class SalesPlanSuccess can accept only regular Python floats and integers")
+        if not isinstance(AR2, float) and not isinstance(AR2, int) and AR2 is not None:
+            raise TypeError("The parameter 'AR2' of class SalesPlanSuccess can accept only regular Python floats and integers")
+        if (sample_size < 1000) or (sample_size > 10000000):
             raise ValueError("The parameter 'sample_size' of method simulate() in class SalesPlanSuccess must be between 1000 and 10 000 000")
         if not hasattr(self, 'params'):
             raise ValueError("Before calling method 'simulate' of an object of class SalesPlanSuccess you first have to fit the ARIMA model by calling method 'fit' of the same object")
-        self.simul = np.random.normal(loc=self.params[0], scale=np.sqrt(self.params[4]), size=[self.monthsToForecast, self.sample_size])
+        if sigma is not None:
+            if (sigma <= 0):
+                raise ValueError("The parameter 'sigma' of method simulate() in class SalesPlanSuccess must be a positive (non-zero) number")
+            self.params['sigma'] = sigma
+            self.params['var'] = np.power(sigma, 2)
+        if AR1 is not None:
+            if (AR1 <= -1.0) or (AR1 >= 1.0):
+                raise ValueError("The parameter 'AR1' of method simulate() in class SalesPlanSuccess must be between -1.0 and 1.0")
+            self.params['AR1'] = AR1
+        if AR2 is not None:
+            if (AR2 <= -1.0) or (AR2 >= 1.0):
+                raise ValueError("The parameter 'AR2' of method simulate() in class SalesPlanSuccess must be between -1.0 and 1.0")
+            self.params['AR2'] = AR2
+        if mu is not None:
+            self.params['mu'] = mu
+        if EoQ is not None:
+            self.params['EoQ'] = EoQ
+        self.qEnd = (((np.arange(self.startMonth, 13) % 3) == 0) * self.params['EoQ']).reshape((self.monthsToForecast,1))
+        self.ARs = self.params[3:1:-1].values.reshape((1,2))
+        self.m1 = np.dot(self.ARs, self.finalTwo)
+        self.sample_size = sample_size
+        self.simul = np.random.normal(loc=self.params['mu'], scale=self.params['sigma'], size=[self.monthsToForecast, self.sample_size])
         self.simul = self.qEnd + self.simul
         self.simul[0] = self.simul[0] + self.m1
         if self.monthsToForecast > 1:
-            self.simul[1] = self.simul[1] + ((self.simul[0] * self.ARs[0,1]) + (self.finalTwo[1] * self.ARs[0,0]))
+            self.simul[1] = self.simul[1] + ((self.simul[0] * self.params['AR1']) + (self.finalTwo[1] * self.params['AR2']))
         if self.monthsToForecast > 2:
             for i in range(2, self.monthsToForecast):
                 self.simul[i] = np.dot(self.ARs, self.simul[(i-2):i])
@@ -150,11 +180,26 @@ class SalesPlanSuccess:
         self.left_margin = self.left_x if self.left_x < self.plan else self.plan
         self.right_x = np.quantile(self.finalDistibution, 0.99)
         self.right_margin = self.right_x if self.right_x > self.plan else self.plan
-        self.position = (self.plan - self.left_margin) / (self.right_margin - self.left_margin)
+        self.position_plan = (self.plan - self.left_margin) / (self.right_margin - self.left_margin)
         self.percent_not_achieved = 100*(self.finalDistibution < self.plan).mean()
         self.density = stats.kde.gaussian_kde(self.finalDistibution)
         self.x1 = np.linspace(self.left_x, self.plan, 1000)
         self.x2 = np.linspace(self.plan, self.right_x, 1000)
+        self.y1 = self.density(self.x1)
+        self.y2 = self.density(self.x2)
+        self.mode1 = np.argmax(self.y1)
+        self.mode2 = np.argmax(self.y2)
+        if max(self.y1) > max(self.y2):
+            self.moda = self.x1[self.mode1]
+        else:
+            self.moda = self.x2[self.mode2]
+        self.position_mode = (self.moda - self.left_margin) / (self.right_margin - self.left_margin)
+        if self.position_plan > self.position_mode:
+            self.vertical_position1 = 0.2
+            self.vertical_position2 = 0.7
+        else:
+            self.vertical_position1 = 0.7
+            self.vertical_position2 = 0.2
         
         
     def plot(self, failure_color:str = 'orange', success_color:str = 'green') -> None:
@@ -171,10 +216,10 @@ class SalesPlanSuccess:
         if not is_color_like(success_color):
             raise ValueError("The parameter 'success_color' of method plot() in class SalesPlanSuccess must contain valid color")
         self.ax = plt.gca()
-        plt.fill_between(self.x1, self.density(self.x1), color = failure_color)
-        plt.fill_between(self.x2, self.density(self.x2), color = success_color)
-        plt.text(self.position-0.01, 0.2, "Not achieved\n%.1f" % (self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes, horizontalalignment='right')
-        plt.text(self.position+0.01, 0.7, "Achieved\n%.1f" % (100 - self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes)
+        plt.fill_between(self.x1, self.y1, color = failure_color)
+        plt.fill_between(self.x2, self.y2, color = success_color)
+        plt.text(self.position_plan-0.01, self.vertical_position1, "Not achieved\n%.1f" % (self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes, horizontalalignment='right')
+        plt.text(self.position_plan+0.01, self.vertical_position2, "Achieved\n%.1f" % (100 - self.percent_not_achieved,) + '%', color='black', fontsize = 15, transform=self.ax.transAxes)
         plt.xlabel("Expected annual sales vs. the plan")
         plt.title("Expected annual sales %s in %4d" % (self.product, self.yearForcasted))
         plt.xlim(self.left_margin, self.right_margin)
