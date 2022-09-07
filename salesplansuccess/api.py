@@ -104,6 +104,7 @@ class SalesPlanSuccess:
         else:
             self._fit_arima()
         self.params = pd.Series(data=np.concatenate((self.params, np.sqrt(self.params[-1]).reshape((1,)))), index=['mu', 'EoQ', 'AR1', 'AR2', 'var', 'sigma'])
+        self.summary()
 
             
     def _fit_arima(self) -> None:
@@ -200,7 +201,25 @@ class SalesPlanSuccess:
         else:
             self.vertical_position1 = 0.7
             self.vertical_position2 = 0.2
-        self.summary()
+        self.percentiles()
+            
+            
+    def percentiles(self):
+        print("Annual plan:\t\t\t\t{:,.0f}\n\nProbability of achieving this annual plan:\t{:.1f}%%\n\n\tPercentile table\n1st percetile:\t\t{:,.0f}\n5th percetile:\t\t{:,.0f}\n10th percetile:\t\t{:,.0f}\n20th percetile:\t\t{:,.0f}\n30th percetile:\t\t{:,.0f}\n40th percetile:\t\t{:,.0f}\n50th percetile:\t\t{:,.0f}\n60th percetile:\t\t{:,.0f}\n70th percetile:\t\t{:,.0f}\n80th percetile:\t\t{:,.0f}\n90th percetile:\t\t{:,.0f}\n95th percetile:\t\t{:,.0f}\n99th percetile:\t\t{:,.0f}\n".format(self.plan,
+            100.0 - self.percent_not_achieved,
+            np.quantile(self.finalDistibution, 0.01), 
+            np.quantile(self.finalDistibution, 0.05), 
+            np.quantile(self.finalDistibution, 0.1), 
+            np.quantile(self.finalDistibution, 0.2), 
+            np.quantile(self.finalDistibution, 0.3), 
+            np.quantile(self.finalDistibution, 0.4), 
+            np.quantile(self.finalDistibution, 0.5), 
+            np.quantile(self.finalDistibution, 0.6), 
+            np.quantile(self.finalDistibution, 0.7), 
+            np.quantile(self.finalDistibution, 0.8), 
+            np.quantile(self.finalDistibution, 0.9), 
+            np.quantile(self.finalDistibution, 0.95), 
+            np.quantile(self.finalDistibution, 0.99)))
         
         
     def plot(self, failure_color:str = 'orange', success_color:str = 'green') -> None:
